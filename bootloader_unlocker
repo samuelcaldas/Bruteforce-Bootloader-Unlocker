@@ -1,41 +1,26 @@
 #!/bin/bash
 clear
 # Start progresbar code
-#_last_progress=-1
-
-# 0. Initialize
-#function progbar_init {
-#    printf "\n"
-#    _last_progress=-1
-#}
-
 # 1. Create ProgressBar function
 # 1.1 Input is currentState($1) and totalState($2)
-function progbar_show {
-    # Process data
+function ProgressBar {
+# Process data
     let _progress=(${1}*100/${2}*100)/100
-
-    if [ $_progress -eq $_last_progress ]; then
-        return
-    fi
-    #_last_progress=$_progress
-
     let _done=(${_progress}*4)/10
     let _left=40-$_done
-
-    # Build progressbar string lengths
+# Build progressbar string lengths
     _fill=$(printf "%${_done}s")
     _empty=$(printf "%${_left}s")
 
-    # 1.2 Build progressbar strings and print the ProgressBar line
-    # 1.2.1 Output example:
-    # 1.2.1.1 Progress : [########################################] 100%
-    printf "\rProgress : [${_fill// /#}${_empty// /-}] ${_progress}%%"
+# 1.2 Build progressbar strings and print the ProgressBar line
+# 1.2.1 Output example:                           
+# 1.2.1.1 Progress : [########################################] 100%
+printf "\rKey ${1} ${3} [${_fill// /#}${_empty// /-}] ${_progress}%%"
+
 }
 #end progressbar code
 # save funcion
 function save {
-	clear
   echo $"Saving..."
   echo "${value}" > ${devfile}
 }
@@ -59,12 +44,11 @@ do
 	# show it to the user
 	output=($((fastboot oem unlock ${value}) 2>&1))
 	if [[ "${output[1]}" != *"FAILED"* ]]; then
-		clear
 		echo "Your unlock code is: ${value}"
 		break
 	fi
-	echo -ne "Trying key ${value}: ${output[1]}"\\r
-	progbar_show ${value} 9999999999999999
+	#echo -ne "Trying key ${value}"\\r
+	ProgressBar ${value} 99999999999999999 ${output[1]}
 	# increment the value
 	value=$((value+1));
 done;
