@@ -1,11 +1,10 @@
 #!/bin/bash
-# Cleanup funcion
-function finish {
-  # Your cleanup code here
+# save funcion
+function save {
   echo "Saving..."
   echo "${value}" > ${devfile}
 }
-trap finish EXIT
+trap save EXIT
 # get the current device name
 devices=(`fastboot devices`);
 device=${devices[0]}
@@ -19,13 +18,14 @@ if [ ! -f $devfile ] ; then
 else
 	value=`cat ${devfile}`
 fi
-# while [ $value -le 5 ]
-# do
+while true
+do
 	# show it to the user
-	echo "Trying: ${value}"
-	# fastboot oem unlock $value
+	output=$(fastboot oem unlock ${value})
+	status=($output)
+	echo -ne "Trying key ${value}"\\r
 	# increment the value
 	value=$((value+1));
 	# and save it for nevaluet time
 	# echo "${value}" > /tmp/value.dat
-# done;
+done;
