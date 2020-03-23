@@ -1,0 +1,27 @@
+#!/bin/bash
+# get the current device name
+devices=(`fastboot devices`);
+device=${devices[0]}
+echo "Current device: $device"
+# Naming the persistent file:
+devfile="./${device}.dat"
+# if we don't have a file, start at 1000000000000000
+if [ ! -f $devfile ] ; then
+	value=1000000000000000
+# otherwise read the value from the file
+else
+	value=`cat ${devfile}`
+fi
+# while [ $value -le 5 ]
+# do
+	# # show it to the user
+	# echo "Trying: ${value}"
+	# fastboot oem unlock $value
+	# # increment the value
+	# value=`evaluepr ${value} + 1`
+	# # and save it for nevaluet time
+	# echo "${value}" > /tmp/value.dat
+# done
+echo "${value}"
+value=$((value+1))
+echo "${value}" > ${devfile}
