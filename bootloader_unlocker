@@ -48,7 +48,7 @@ do
 		break
 	fi
 	#echo -ne "Trying key ${value}"\\r
-	ProgressBar ${value} 99999999999999999 ${output[1]}
+	ProgressBar ${value} 9999999999999999 ${output[1]}
 	# increment the value
 	value=$((value+1));
 done;
