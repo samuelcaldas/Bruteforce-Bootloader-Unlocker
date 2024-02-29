@@ -6,11 +6,9 @@ function Show-ProgressBar {
     )
     # Calculate the percentage of progress
     $progress = [math]::Round(($currentValue / $maximumValue) * 100)
-    # Determine the number of symbols for the filled and empty parts of the indicator
-    $filled = '#' * ($progress / 2.5)
-    $empty = '-' * (40 - $filled.Length)
-    # Display the progress bar
-    Write-Host "`rKey $currentValue $resultMessage [$filled$empty] $progress%" -NoNewline
+    
+    # Display the progress bar using Write-Progress
+    Write-Progress -Activity "Unlocking Device" -Status "Key $currentValue" -PercentComplete $progress
 }
 
 # Function to save the current value to a file
