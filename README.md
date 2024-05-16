@@ -24,7 +24,7 @@ This project provides scripts to attempt unlocking the bootloader of Android dev
 3. Run `chmod +x bootloader_unlocker` to make the script executable.
 4. Execute the script with `./bootloader_unlocker`.
 
-### Windows (PowerShell)
+### Windows (PowerShell) ALPHA!!!
 
 1. Connect your device to your computer via a USB cable.
 2. Open PowerShell and navigate to the script's directory.
