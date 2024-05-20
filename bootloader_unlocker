@@ -36,13 +36,15 @@ else # If you have a file with your previous progress, it reads it and assigns i
 	read -r value < "${devfile}"
 fi
 
-while true; do # This part of the code repeats until it finds your unlock code or reaches 9999999999999999 
-		# This part of the code tries to unlock your device with fastboot using value as unlock code and stores what fastboot says in output 
-		output=( $(fastboot oem unlock ${value} 2>&1) )
-		if [[ "${output[1]}" != *"FAILED"* ]]; then # If fastboot says something other than FAILED, it means you found your unlock code 
-			printf "Your unlock code is: %s\n" "$value" # It prints out your unlock code and stops repeating 
-			break 
-		fi  
-		ProgressBar "${value}" 9999999999999999 "${output[1]}" # It updates your progress indicator with your current value and result message 
-		(( value++ )) # It increases your value by one for next try 
-	done;
+while true; do # This part of the code repeats until it finds your unlock code or reaches 9999999999999999
+    # This part of the code tries to unlock your device with fastboot using value as unlock code and stores what fastboot says in output
+    output=( $(fastboot oem unlock ${value} 2>&1) )
+
+    # Use grep with a regular expression to search for variations of "fail" in a case-insensitive manner
+    if ! echo "${output}" | grep -iE 'fail(ed|ure)?'; then # If grep finds no match, it means there's no failure message and you found your unlock code
+        printf "Your unlock code is: %s\n" "$value" # It prints out your unlock code and stops repeating 
+        break
+    fi
+    ProgressBar "${value}" 9999999999999999 "${output[1]}" # It updates your progress indicator with your current value and result message 
+    (( value++ )) # It increases your value by one for next try 
+done;
