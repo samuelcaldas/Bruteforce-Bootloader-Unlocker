@@ -1,57 +1,62 @@
 # Function to create a visual progress bar
 function Show-ProgressBar {
     param (
-        [int]$currentValue,
-        [int]$maximumValue
+        [int]$current,
+        [int]$total,
+        [string]$message
     )
     # Calculate the percentage of progress
-    $progress = [math]::Round(($currentValue / $maximumValue) * 100)
-    
-    # Display the progress bar using Write-Progress
-    Write-Progress -Activity "Unlocking Device" -Status "Key $currentValue" -PercentComplete $progress
+    $progress = [math]::Round(($current * 100) / $total, 2)
+    $done = [math]::Round(($progress * 4) / 10)
+    $left = 40 - $done
+    $fill = "#" * $done
+    $empty = "-" * $left
+    # Display the progress bar
+    Write-Host -NoNewline "`rKey $current $message [$fill$empty] $progress%"
 }
 
-# Function to save the current value to a file
+# Function to save the current progress to a file
 function Save-Progress {
     param (
         [string]$value,
         [string]$deviceFile
     )
-    Write-Host "Saving..."
-    $value | Out-File $deviceFile
-}
-
-# Gracefully handle script exit
-trap {
-    Save-Progress -value $global:value -deviceFile $global:devfile
-    exit
+    Write-Output "Saving..."
+    Set-Content -Path $deviceFile -Value $value
 }
 
 # Get the device name from fastboot and print it out
-$device = (fastboot devices)[0]
-Write-Host "Current device: $device"
+$devices = & fastboot devices
+$device = $devices[0]
+Write-Output "Current device: $device"
 
 # Create a file name based on the device name
-$devfile = "./${device}.dat"
+$devfile = "./$device.dat"
 
 # Check if there's a file with previous progress, otherwise start from a default value
-if (!(Test-Path $devfile)) {
-    $global:value = 1000000000000000
-} else {
-    $global:value = Get-Content $devfile
+if (-Not (Test-Path -Path $devfile)) {
+    $value = 1000000000000000
+}
+else {
+    $value = Get-Content -Path $devfile
 }
 
-# Loop until the unlock code is found or the maximum value is reached
-while ($true) {
-    # Attempt to unlock the device with the current value as the unlock code
-    $output = fastboot oem unlock $global:value 2>&1
-    if ($output[1] -notmatch "FAILED") {
-        # If the unlock code is found
-        Write-Host "Your unlock code is: $global:value"
-        break
+try {
+    while ($true) {
+        $output = & fastboot oem unlock $value 2>&1
+
+        if (-Not ($output -match "(?i)fail(ed|ure)?")) {
+            # If the unlock code is found
+            Write-Output "Your unlock code is: $value"
+            break
+        }
+
+        # Update the progress bar
+        Show-ProgressBar -current $value -total 9999999999999999 -message $output[1]
+        # Increment the value for the next attempt
+        $value++
     }
-    # Update the progress bar
-    Show-ProgressBar -currentValue $global:value -maximumValue 9999999999999999
-    # Increment the value for the next attempt
-    $global:value++
+}
+finally {
+    Save-Progress -deviceFile $devfile -value $value
 }
