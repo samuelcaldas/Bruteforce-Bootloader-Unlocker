@@ -1,50 +1,99 @@
 #!/bin/bash
 clear
-# This part of the code creates a visual indicator of how much progress has been made
-# It takes two inputs: the current value and the maximum value
-function ProgressBar {
-# This part of the code calculates how much percentage of the maximum value has been reached
-    (( _progress=(${1}*100/${2}*100)/100 ))
-# This part of the code determines how many symbols to use for the filled and empty parts of the indicator
-    (( _done=(${_progress}*4)/10 ))
-    (( _left=40-_done ))
-# This part of the code creates strings of symbols for the filled and empty parts of the indicator
-    _fill=$(printf "%${_done}s")
-    _empty=$(printf "%${_left}s")
 
-# This part of the code prints out the indicator on one line, showing the current value, the result message, and the percentage
-printf "\rKey %s %s [%s%s] %s%%" "$1" "$3" "${_fill// /#}" "${_empty// /-}" "$_progress"
+# Function to read device data from the file
+function read_devfile {
+  declare -g code_type code_length last_value
+  if [[ -f "${devfile}" ]]; then
+    while IFS='=' read -r key value; do
+      case "${key}" in
+        code_type) code_type="${value}" ;;
+        code_length) code_length="${value}" ;;
+        last_value) last_value="${value}" ;;
+      esac
+    done < "${devfile}"
+  fi
+}
 
+# Function to write device data to the file
+function write_devfile {
+  {
+    echo "code_type=${code_type}"
+    echo "code_length=${code_length}"
+    echo "last_value=${last_value}"
+  } > "${devfile}"
 }
-# This part of the code defines a function that saves the current value to a file
-function save {
-  printf "Saving...\n"
-  printf "%s\n" "${value}" > "${devfile}"
+
+# Function to convert a number to a code string based on the character set
+function number_to_code {
+  local num=$1
+  local length=$2
+  local base=${#charset}
+  local code=''
+  while [[ ${#code} -lt ${length} ]]; do
+    local index=$(( num % base ))
+    code="${charset:index:1}${code}"
+    num=$(( num / base ))
+  done
+  echo "${code}"
 }
-# This part of the code makes sure that when you exit or interrupt the program, it will save your progress and quit gracefully
-trap 'save; exit' EXIT
-# This part of the code gets your device name from fastboot and prints it out
+
+# Get the current device name
 devices=( $(fastboot devices) )
 device="${devices[0]}"
 printf "Current device: %s\n" "$device"
 # This part of the code creates a file name based on your device name
 devfile="./${device}.dat"
-# This part of the code checks if you have a file with your previous progress, and if not, it starts from 1000000000000000
-if [[ ! -f $devfile ]] ; then
-	value=1000000000000000
-else # If you have a file with your previous progress, it reads it and assigns it to value 
-	read -r value < "${devfile}"
+
+# If device data file doesn't exist, prompt for code type and length
+if [[ ! -f "${devfile}" ]]; then
+  while true; do
+    read -r -p "Does the device use numeric or alphanumeric codes? (n/a): " code_type
+    if [[ "${code_type}" =~ ^(n|a|numeric|alphanumeric)$ ]]; then
+      [[ "${code_type}" == 'n' ]] && code_type='numeric'
+      [[ "${code_type}" == 'a' ]] && code_type='alphanumeric'
+      break
+    else
+      echo "Please enter 'n' for numeric or 'a' for alphanumeric."
+    fi
+  done
+  read -r -p "Enter code length: " code_length
+  last_value=0
+  write_devfile
+else
+  read_devfile
 fi
 
-while true; do # This part of the code repeats until it finds your unlock code or reaches 9999999999999999
-    # This part of the code tries to unlock your device with fastboot using value as unlock code and stores what fastboot says in output
-    output=( $(fastboot oem unlock ${value} 2>&1) )
+# Set character set based on code type
+if [[ "${code_type}" == "numeric" ]]; then
+  charset='0123456789'
+elif [[ "${code_type}" == "alphanumeric" ]]; then
+  charset='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+else
+  echo "Invalid code type: ${code_type}"
+  exit 1
+fi
 
-    # Use grep with a regular expression to search for variations of "fail" in a case-insensitive manner
-    if ! echo "${output}" | grep -iE 'fail(ed|ure)?'; then # If grep finds no match, it means there's no failure message and you found your unlock code
-        printf "Your unlock code is: %s\n" "$value" # It prints out your unlock code and stops repeating 
-        break
-    fi
-    ProgressBar "${value}" 9999999999999999 "${output[1]}" # It updates your progress indicator with your current value and result message 
-    (( value++ )) # It increases your value by one for next try 
-done;
+base=${#charset}
+
+# Trap to save data on exit
+trap 'write_devfile; exit' EXIT SIGINT
+
+while true; do
+  code=$(number_to_code ${last_value} ${code_length})
+
+  # Try to unlock the device
+  output=($(fastboot oem unlock "${code}" 2>&1))
+
+  # Check if the unlock was successful
+  if ! echo "${output}" | grep -iqE 'fail(ed|ure)?'; then
+    echo -e "\nYour unlock code is: ${code}"
+    break
+  fi
+
+  # Display the current attempt
+  echo -ne "Trying code: ${code}\r"
+
+  (( last_value++ ))
+  write_devfile
+done
