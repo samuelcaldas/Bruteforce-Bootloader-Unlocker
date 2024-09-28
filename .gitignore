@@ -1,2 +1,74 @@
+# .gitignore for Bruteforce Bootloader Unlocker Project
+
+# ----------------------------
+# Visual Studio Code Settings
+# ----------------------------
+# Ignore VSCode workspace and settings folders
+.vscode/
+.vs/
+
+# If you want to share specific settings, you can remove the lines above
+# and selectively include necessary configuration files.
+
+# ----------------------------
+# Device-Specific Data Files
+# ----------------------------
+# Ignore device-specific configuration and data files
 *.dat
-.vs/*
+
+# ----------------------------
+# Logs and Temporary Files
+# ----------------------------
+# Ignore log files
+*.log
+
+# Ignore temporary files created by editors
+*~
+
+# ----------------------------
+# OS-Specific Files
+# ----------------------------
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# ----------------------------
+# PowerShell Specific Files
+# ----------------------------
+# Ignore PowerShell XML help files
+*.ps1.xml
+
+# ----------------------------
+# Backup and Swap Files
+# ----------------------------
+# Common backup file extensions
+*.bak
+*.tmp
+*.swp
+
+# ----------------------------
+# Other Temporary and Hidden Files
+# ----------------------------
+# Ignore hidden files except .gitignore and .gitattributes
+.*
+!.gitignore
+!.gitattributes
+
+# ----------------------------
+# Optional: Exclude Executables (if applicable)
+# ----------------------------
+# If you generate executable versions of your scripts, you might want to ignore them
+# For example:
+# *.exe
+# *.out
+# *.bin
+
+# ----------------------------
+# Optional: Ignore Node Modules (if using Node.js tools)
+# ----------------------------
+# If your project uses Node.js for any tooling, uncomment the following lines
+# node_modules/
+# npm-debug.log*
