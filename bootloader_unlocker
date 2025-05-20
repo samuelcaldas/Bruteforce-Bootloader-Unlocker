@@ -1,15 +1,51 @@
 #!/bin/bash
 clear
 
+# ---------------- CONFIGURATION ----------------
+# Default values for Motorola devices
+DEFAULT_CODE_LENGTH=20
+DEFAULT_CHARACTER_SET="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+DEFAULT_STRATEGY="sequential"
+# Custom patterns observed in Motorola codes
+MOTO_PATTERN_1="[A-Z]{19}[0-9]"    # 19 uppercase letters followed by 1 number
+MOTO_PATTERN_2="[A-Z]{4}[0-9][A-Z]{15}" # 4 uppercase letters, 1 number, 15 uppercase letters
+
+# ---------------- FUNCTIONS ----------------
+# Function to show help
+function show_help {
+  echo "Bootloader Unlocker - Optimized for Motorola Devices"
+  echo "Usage: $0 [options]"
+  echo ""
+  echo "Options:"
+  echo "  -h, --help            Show this help message"
+  echo "  -d, --device <id>     Specify device ID (default: auto-detect)"
+  echo "  -t, --type <type>     Code type: numeric, alpha, moto (default: moto)"
+  echo "  -l, --length <num>    Code length (default: 20 for Motorola)"
+  echo "  -s, --start <code>    Start from specific code"
+  echo "  -p, --pattern <num>   Use specific Motorola pattern (1 or 2)"
+  echo "  --strategy <strategy> Bruteforce strategy: sequential, random, smart (default: sequential)"
+  echo ""
+  echo "Motorola-specific features:"
+  echo "  - Default 20-character codes"
+  echo "  - Optimized character set (mostly uppercase letters and numbers)"
+  echo "  - Pattern-specific brute forcing based on observed Motorola codes"
+  echo ""
+  echo "Example: $0 --type moto --pattern 1"
+  exit 0
+}
+
 # Function to read device data from the file
 function read_devfile {
-  declare -g code_type code_length last_value
+  declare -g code_type code_length last_value charset strategy known_positions
   if [[ -f "${devfile}" ]]; then
     while IFS='=' read -r key value; do
       case "${key}" in
         code_type) code_type="${value}" ;;
         code_length) code_length="${value}" ;;
         last_value) last_value="${value}" ;;
+        charset) charset="${value}" ;;
+        strategy) strategy="${value}" ;;
+        known_positions) known_positions="${value}" ;;
       esac
     done < "${devfile}"
   fi
@@ -21,6 +57,9 @@ function write_devfile {
     echo "code_type=${code_type}"
     echo "code_length=${code_length}"
     echo "last_value=${last_value}"
+    echo "charset=${charset}"
+    echo "strategy=${strategy}"
+    echo "known_positions=${known_positions}"
   } > "${devfile}"
 }
 
@@ -35,65 +74,401 @@ function number_to_code {
     code="${charset:index:1}${code}"
     num=$(( num / base ))
   done
+  
+  # Apply pattern modifications if using a Motorola pattern
+  if [[ "${code_type}" == "moto" && -n "${moto_pattern}" ]]; then
+    local modified_code="${code}"
+    case "${moto_pattern}" in
+      1)
+        # Pattern 1: Ensure last character is a digit, rest are uppercase
+        if [[ ! "${modified_code:19:1}" =~ [0-9] ]]; then
+          # Replace last character with a random digit
+          local digit="${numeric_charset:$(( RANDOM % 10 )):1}"
+          modified_code="${modified_code:0:19}${digit}"
+        fi
+        ;;
+      2)
+        # Pattern 2: 4 uppercase letters, 1 number, 15 uppercase letters
+        if [[ ! "${modified_code:4:1}" =~ [0-9] ]]; then
+          # Replace 5th character with a random digit
+          local digit="${numeric_charset:$(( RANDOM % 10 )):1}"
+          modified_code="${modified_code:0:4}${digit}${modified_code:5}"
+        fi
+        ;;
+    esac
+    code="${modified_code:0:${length}}"
+  fi
+  
+  # Apply any known positions
+  if [[ -n "${known_positions}" ]]; then
+    local temp_code="${code}"
+    while IFS=':' read -r pos char; do
+      if [[ -n "${pos}" && -n "${char}" ]]; then
+        temp_code="${temp_code:0:${pos}}${char}${temp_code:$((pos+1))}"
+      fi
+    done <<< "${known_positions//;/$'\n'}"
+    code="${temp_code}"
+  fi
+  
   echo "${code}"
 }
 
-# Get the current device name
-devices=( $(fastboot devices) )
-device="${devices[0]}"
-printf "Current device: %s\n" "$device"
-# This part of the code creates a file name based on your device name
-devfile="./${device}.dat"
+# Function to generate a random code
+function generate_random_code {
+  local length=$1
+  local code=""
+  local base=${#charset}
+  
+  for (( i=0; i<length; i++ )); do
+    local index=$(( RANDOM % base ))
+    code="${code}${charset:index:1}"
+  done
+  
+  echo "${code}"
+}
 
-# If device data file doesn't exist, prompt for code type and length
-if [[ ! -f "${devfile}" ]]; then
-  while true; do
-    read -r -p "Does the device use numeric or alphanumeric codes? (n/a): " code_type
-    if [[ "${code_type}" =~ ^(n|a|numeric|alphanumeric)$ ]]; then
-      [[ "${code_type}" == 'n' ]] && code_type='numeric'
-      [[ "${code_type}" == 'a' ]] && code_type='alphanumeric'
-      break
+# Function to generate the next code based on strategy
+function next_code {
+  case "${strategy}" in
+    random)
+      code=$(generate_random_code ${code_length})
+      ;;
+    smart)
+      # Example of a smarter algorithm for Motorola codes
+      # For demonstration, we'll alternate between sequential and pattern-based
+      if (( last_value % 2 == 0 )); then
+        code=$(number_to_code ${last_value} ${code_length})
+      else
+        # Generate a code following Motorola patterns
+        local base_code=$(number_to_code ${last_value} ${code_length})
+        if [[ "${moto_pattern}" == "1" ]]; then
+          # Ensure last character is a digit
+          local digit="${numeric_charset:$(( RANDOM % 10 )):1}"
+          code="${base_code:0:19}${digit}"
+        elif [[ "${moto_pattern}" == "2" ]]; then
+          # 4 uppercase letters, 1 number, 15 uppercase letters
+          local digit="${numeric_charset:$(( RANDOM % 10 )):1}"
+          code="${base_code:0:4}${digit}${base_code:5:15}"
+        else
+          code="${base_code}"
+        fi
+      fi
+      ;;
+    *)
+      # Default: sequential
+      code=$(number_to_code ${last_value} ${code_length})
+      ;;
+  esac
+  echo "${code}"
+}
+
+# Function to estimate remaining time
+function estimate_time {
+  local current=$1
+  local total=$2
+  local elapsed=$3
+  
+  if [[ ${current} -le 0 ]]; then
+    echo "Unknown"
+    return
+  fi
+  
+  local rate=$(( current / elapsed ))
+  if [[ ${rate} -le 0 ]]; then
+    echo "Unknown"
+    return
+  fi
+  
+  local remaining=$(( (total - current) / rate ))
+  
+  # Format the time
+  local days=$(( remaining / 86400 ))
+  local hours=$(( (remaining % 86400) / 3600 ))
+  local minutes=$(( (remaining % 3600) / 60 ))
+  local seconds=$(( remaining % 60 ))
+  
+  if [[ ${days} -gt 0 ]]; then
+    echo "${days}d ${hours}h ${minutes}m ${seconds}s"
+  elif [[ ${hours} -gt 0 ]]; then
+    echo "${hours}h ${minutes}m ${seconds}s"
+  elif [[ ${minutes} -gt 0 ]]; then
+    echo "${minutes}m ${seconds}s"
+  else
+    echo "${seconds}s"
+  fi
+}
+
+# Function to try unlocking with the given code
+function try_unlock {
+  local code=$1
+  
+  # Try to unlock the device
+  output=$(fastboot oem unlock "${code}" 2>&1)
+  
+  # Check if the unlock was successful
+  if ! echo "${output}" | grep -iqE 'fail(ed|ure)?'; then
+    return 0  # Success
+  else
+    return 1  # Failure
+  fi
+}
+
+# Function to display progress bar
+function show_progress {
+  local current=$1
+  local total=$2
+  local length=50
+  local filled=$(( current * length / total ))
+  
+  printf "["
+  for (( i=0; i<length; i++ )); do
+    if [[ ${i} -lt ${filled} ]]; then
+      printf "#"
     else
-      echo "Please enter 'n' for numeric or 'a' for alphanumeric."
+      printf " "
     fi
   done
-  read -r -p "Enter code length: " code_length
-  last_value=0
+  printf "] %d/%d (%0.2f%%)" ${current} ${total} $(bc -l <<< "scale=2; ${current}*100/${total}")
+}
+
+# ---------------- PARSE COMMAND LINE ARGUMENTS ----------------
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+  key="$1"
+  case $key in
+    -h|--help)
+      show_help
+      ;;
+    -d|--device)
+      manual_device="$2"
+      shift 2
+      ;;
+    -t|--type)
+      arg_code_type="$2"
+      shift 2
+      ;;
+    -l|--length)
+      arg_code_length="$2"
+      shift 2
+      ;;
+    -s|--start)
+      arg_start_code="$2"
+      shift 2
+      ;;
+    -p|--pattern)
+      arg_moto_pattern="$2"
+      shift 2
+      ;;
+    --strategy)
+      arg_strategy="$2"
+      shift 2
+      ;;
+    *)
+      echo "Unknown option: $1"
+      show_help
+      ;;
+  esac
+done
+
+# ---------------- DEVICE DETECTION ----------------
+# Get the current device name
+if [[ -n "${manual_device}" ]]; then
+  device="${manual_device}"
+else
+  devices=( $(fastboot devices) )
+  device="${devices[0]}"
+  if [[ -z "${device}" ]]; then
+    echo "No device detected in fastboot mode. Please connect a device."
+    exit 1
+  fi
+fi
+
+printf "Current device: %s\n" "$device"
+devfile="./${device}.dat"
+
+# ---------------- DEVICE CONFIGURATION ----------------
+# Define character sets
+numeric_charset='0123456789'
+alpha_charset='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+moto_charset='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'  # Optimized for Motorola
+
+# If device data file doesn't exist, or we're overriding settings
+if [[ ! -f "${devfile}" || -n "${arg_code_type}" || -n "${arg_code_length}" || -n "${arg_strategy}" ]]; then
+  # Set code type
+  if [[ -n "${arg_code_type}" ]]; then
+    code_type="${arg_code_type}"
+  else
+    # Prompt for code type if not specified
+    if [[ ! -f "${devfile}" ]]; then
+      echo "Select code type:"
+      echo "1) Numeric (0-9)"
+      echo "2) Alphanumeric (A-Z, 0-9)"
+      echo "3) Motorola specific (optimized for Motorola devices)"
+      read -r -p "Enter choice [3]: " choice
+      
+      case "${choice}" in
+        1) code_type="numeric" ;;
+        2) code_type="alpha" ;;
+        *) code_type="moto" ;;
+      esac
+    fi
+  fi
+  
+  # Set code length
+  if [[ -n "${arg_code_length}" ]]; then
+    code_length="${arg_code_length}"
+  elif [[ ! -f "${devfile}" ]]; then
+    if [[ "${code_type}" == "moto" ]]; then
+      read -r -p "Enter code length [${DEFAULT_CODE_LENGTH}]: " code_length
+      code_length=${code_length:-${DEFAULT_CODE_LENGTH}}
+    else
+      read -r -p "Enter code length: " code_length
+    fi
+  fi
+  
+  # Set strategy
+  if [[ -n "${arg_strategy}" ]]; then
+    strategy="${arg_strategy}"
+  elif [[ ! -f "${devfile}" ]]; then
+    echo "Select brute force strategy:"
+    echo "1) Sequential (try all codes in order)"
+    echo "2) Random (try random codes)"
+    echo "3) Smart (use patterns and optimizations)"
+    read -r -p "Enter choice [1]: " choice
+    
+    case "${choice}" in
+      2) strategy="random" ;;
+      3) strategy="smart" ;;
+      *) strategy="sequential" ;;
+    esac
+  fi
+  
+  # Set Motorola pattern if applicable
+  if [[ "${code_type}" == "moto" ]]; then
+    if [[ -n "${arg_moto_pattern}" ]]; then
+      moto_pattern="${arg_moto_pattern}"
+    elif [[ ! -f "${devfile}" ]]; then
+      echo "Select Motorola code pattern:"
+      echo "1) 19 uppercase letters + 1 number at the end (e.g., ABCDEFGHIJKLMNOPQRS5)"
+      echo "2) 4 uppercase letters + 1 number + 15 uppercase letters (e.g., ABCD5EFGHIJKLMNOPQRST)"
+      echo "3) No specific pattern"
+      read -r -p "Enter choice [1]: " choice
+      
+      case "${choice}" in
+        2) moto_pattern="2" ;;
+        3) moto_pattern="" ;;
+        *) moto_pattern="1" ;;
+      esac
+    fi
+  fi
+  
+  # Set starting value
+  if [[ -n "${arg_start_code}" ]]; then
+    # TODO: Convert start code to number
+    last_value=0
+  else
+    last_value=0
+  fi
+  
+  # Initialize known positions (empty by default)
+  known_positions=""
+  
+  # Ask if user knows any specific positions in the code
+  if [[ ! -f "${devfile}" ]]; then
+    read -r -p "Do you know any specific characters in the code? (y/n) [n]: " has_known
+    if [[ "${has_known}" == "y" ]]; then
+      echo "Enter known positions in format position:character (e.g., 5:A;10:B)"
+      read -r -p "> " known_positions
+    fi
+  fi
+  
+  # Write to device file
   write_devfile
 else
+  # Read from device file
   read_devfile
 fi
 
 # Set character set based on code type
-if [[ "${code_type}" == "numeric" ]]; then
-  charset='0123456789'
-elif [[ "${code_type}" == "alphanumeric" ]]; then
-  charset='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+case "${code_type}" in
+  numeric)
+    charset="${numeric_charset}"
+    ;;
+  alpha)
+    charset="${alpha_charset}"
+    ;;
+  moto)
+    charset="${moto_charset}"
+    ;;
+  *)
+    echo "Invalid code type: ${code_type}"
+    exit 1
+    ;;
+esac
+
+# Calculate total possible combinations
+base=${#charset}
+if [[ "${strategy}" == "sequential" ]]; then
+  total_combinations=$(( base ** code_length ))
 else
-  echo "Invalid code type: ${code_type}"
-  exit 1
+  # For random and smart strategies, just use a large number for progress display
+  total_combinations=1000000
 fi
 
-base=${#charset}
-
+# ---------------- MAIN LOOP ----------------
 # Trap to save data on exit
-trap 'write_devfile; exit' EXIT SIGINT
+trap 'write_devfile; echo -e "\nProgress saved. Resume with: $0"; exit' EXIT SIGINT
+
+# Start time for estimation
+start_time=$(date +%s)
+attempts=0
+status_update_interval=10  # Update status every 10 attempts
+
+echo "Starting bootloader unlock attempts..."
+echo "Code type: ${code_type}, Length: ${code_length}, Strategy: ${strategy}"
+if [[ "${code_type}" == "moto" && -n "${moto_pattern}" ]]; then
+  echo "Using Motorola pattern: ${moto_pattern}"
+fi
+echo "Press Ctrl+C to pause and save progress"
+echo "----------------------------------------"
 
 while true; do
-  code=$(number_to_code ${last_value} ${code_length})
-
+  code=$(next_code)
+  
   # Try to unlock the device
-  output=($(fastboot oem unlock "${code}" 2>&1))
-
-  # Check if the unlock was successful
-  if ! echo "${output}" | grep -iqE 'fail(ed|ure)?'; then
-    echo -e "\nYour unlock code is: ${code}"
+  if try_unlock "${code}"; then
+    echo -e "\nSUCCESS! Your unlock code is: ${code}"
+    # Save the successful code
+    echo "${code}" > "./SUCCESS_${device}.txt"
     break
   fi
-
-  # Display the current attempt
-  echo -ne "Trying code: ${code}\r"
-
+  
+  # Update progress
+  (( attempts++ ))
   (( last_value++ ))
-  write_devfile
+  
+  # Only update the display occasionally to improve performance
+  if (( attempts % status_update_interval == 0 )); then
+    current_time=$(date +%s)
+    elapsed=$(( current_time - start_time ))
+    
+    # Clear the line and show progress
+    echo -ne "\033[K"
+    
+    if [[ "${strategy}" == "sequential" ]]; then
+      remaining=$(estimate_time ${last_value} ${total_combinations} ${elapsed})
+      progress_pct=$(bc -l <<< "scale=3; ${last_value}*100/${total_combinations}")
+      echo -ne "Trying: ${code} | Attempt: ${attempts} | Progress: ${progress_pct}% | Est. remaining: ${remaining}\r"
+    else
+      echo -ne "Trying: ${code} | Attempts: ${attempts} | Elapsed: ${elapsed}s\r"
+    fi
+    
+    # Save progress periodically
+    if (( attempts % 100 == 0 )); then
+      write_devfile
+    fi
+  fi
 done
+
+echo "Bootloader unlock complete!"
+exit 0
