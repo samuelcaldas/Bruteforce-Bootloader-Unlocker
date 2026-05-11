@@ -10,6 +10,44 @@ This project provides scripts to attempt unlocking the bootloader of Android dev
 - **Dynamic Code Generation:** Generates unlock codes based on user-defined character sets and code lengths.
 - **Graceful Exit Handling:** Saves progress automatically upon exit or interruption.
 - **User-Friendly Prompts:** Guides users through initial setup with clear prompts for configuration.
+- **Pre-flight Checks:** Validates that `fastboot` and `adb` are available in PATH before starting.
+
+## Compatibility
+
+> **Important:** This script runs on your **computer** (PC, Mac, or Linux), not on your Android device. It communicates with the device via USB using the standard `fastboot` protocol.
+
+### What you need
+
+- A **computer** (Windows, Linux, or macOS) with a USB port
+- [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools) installed on your computer (`fastboot` and `adb` in PATH)
+- **Not** a mobile ADB client such as BugJaeger, Termux with ADB, or similar — these cannot run the fastboot unlock commands this script relies on
+
+### Supported devices
+
+This script works on Android devices that:
+1. Have **OEM Unlocking** enabled in Developer Options, **or**
+2. Require a numeric or alphanumeric unlock code sent via `fastboot flashing unlock` / `fastboot oem unlock`
+
+## Limitations
+
+> **This script does NOT bypass carrier-level hardware locks.**
+
+If **OEM Unlocking** is **greyed out** in Developer Options, your device bootloader is locked at the carrier or hardware level. In this case:
+- `fastboot flashing unlock` will be rejected by the device
+- This script cannot help, regardless of how many codes it tries
+
+If **OEM Unlocking** is **available and toggleable** in Developer Options, your device supports bootloader unlocking and this script may be useful.
+
+### Motorola devices — try the official path first
+
+Many Motorola devices support official bootloader unlocking. Before using this script:
+
+1. Enable **Developer Options**: Settings → About Phone → tap **Build Number** 7 times
+2. Go to **Settings → Developer Options** and enable **OEM Unlocking**
+3. Visit the [Motorola Bootloader Unlock Portal](https://motorola-global-portal.custhelp.com/app/standalone/bootloader/unlock-your-device-a) to obtain an official unlock code
+4. If the official path is not available, boot into fastboot (`adb reboot bootloader`) and try `fastboot flashing unlock`
+
+Only use this brute-force script if the device uses a numeric/alphanumeric code that you do not have.
 
 ## Requirements
 
@@ -117,7 +155,6 @@ This project provides scripts to attempt unlocking the bootloader of Android dev
     - **Code Type:** Whether the unlock codes are numeric or alphanumeric.
     - **Code Length:** The length of the unlock codes.
   - These settings are stored in a file named after your device's serial number (e.g., `device123.dat`), ensuring that you don't need to reconfigure settings for the same device in future runs.
-
 - **Progress Saving:**
   - The script saves the last attempted unlock code in the configuration file.
   - This allows the script to resume from where it left off if interrupted.
