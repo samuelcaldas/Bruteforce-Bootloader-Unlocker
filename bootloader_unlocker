@@ -1,6 +1,80 @@
 #!/bin/bash
 clear
 
+# ---------------- PRE-FLIGHT CHECKS ----------------
+# Verify required tools are available in PATH before proceeding
+
+function check_dependencies {
+  local missing=()
+
+  if ! command -v fastboot &>/dev/null; then
+    missing+=("fastboot")
+  fi
+
+  if ! command -v adb &>/dev/null; then
+    missing+=("adb")
+  fi
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "============================================================"
+    echo " ERROR: Missing required tools: ${missing[*]}"
+    echo "============================================================"
+    echo ""
+    echo " These tools must be installed and available in your PATH."
+    echo ""
+    echo " Install instructions:"
+    echo "   Linux (Debian/Ubuntu):"
+    echo "     sudo apt-get install android-tools-adb android-tools-fastboot"
+    echo ""
+    echo "   Windows / Other:"
+    echo "     Download Android SDK Platform Tools:"
+    echo "     https://developer.android.com/tools/releases/platform-tools"
+    echo "     Extract and add to your system PATH."
+    echo ""
+    echo " NOTE: Mobile ADB clients (BugJaeger, Termux, etc.) are NOT"
+    echo "       supported. This script must run on a PC/Mac/Linux computer."
+    echo "============================================================"
+    exit 1
+  fi
+
+  # Verify fastboot version (informational)
+  local fb_version
+  fb_version=$(fastboot --version 2>/dev/null | head -1)
+  echo "[OK] fastboot found: ${fb_version:-unknown version}"
+  echo "[OK] adb found: $(adb --version 2>/dev/null | head -1)"
+  echo ""
+}
+
+# Check if a device is connected in fastboot mode
+function check_device_connected {
+  local devices
+  devices=$(fastboot devices 2>/dev/null)
+  if [[ -z "${devices}" ]]; then
+    echo "============================================================"
+    echo " WARNING: No device detected in fastboot mode."
+    echo "============================================================"
+    echo " Make sure your device is:"
+    echo "   1. Connected via USB"
+    echo "   2. In fastboot/bootloader mode (adb reboot bootloader)"
+    echo "   3. USB debugging is enabled"
+    echo ""
+    echo " If OEM Unlock is greyed out in Developer Options, your"
+    echo " device may have a carrier lock. This script cannot bypass"
+    echo " carrier-level hardware locks."
+    echo "============================================================"
+    read -rp "Continue anyway? [y/N]: " confirm
+    if [[ ! "${confirm,,}" == "y" ]]; then
+      echo "Aborted."
+      exit 0
+    fi
+  else
+    echo "[OK] Device detected in fastboot mode:"
+    echo "     ${devices}"
+    echo ""
+  fi
+}
+
+
 # ---------------- CONFIGURATION ----------------
 # Default values for Motorola devices
 DEFAULT_CODE_LENGTH=20
@@ -416,6 +490,10 @@ else
 fi
 
 # ---------------- MAIN LOOP ----------------
+# Run pre-flight checks
+check_dependencies
+check_device_connected
+
 # Trap to save data on exit
 trap 'write_devfile; echo -e "\nProgress saved. Resume with: $0"; exit' EXIT SIGINT
 
