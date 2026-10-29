@@ -50,7 +50,7 @@ function test_charsets {
 function test_builtin_patterns {
   source "${LIB_DIR}/constants.sh"
   IFS=';' read -ra profiles <<< "${BUILTIN_PATTERN_PROFILES}"
-  assert_eq 7 "${#profiles[@]}" "Exactly 7 builtin profiles must exist"
+  assert_eq 3 "${#profiles[@]}" "Exactly 3 experimental profiles must exist"
 
   local total_weight=0 entry name mask weight desc
   for entry in "${profiles[@]}"; do
@@ -62,8 +62,8 @@ function test_builtin_patterns {
     total_weight=$(( total_weight + weight ))
   done
 
-  assert_eq 29 "${total_weight}" "Total profile weight must be 29"
-  assert_contains "${BUILTIN_PATTERN_PROFILES}" "motorola-portal-20:X{20}:10" "Default portal profile must be present"
+  assert_eq 3 "${total_weight}" "Total profile weight must be 3"
+  assert_contains "${BUILTIN_PATTERN_PROFILES}" "motorola-20:X{20}:1" "Experimental Motorola profile must be present"
 }
 
 function test_guard_and_immutability {

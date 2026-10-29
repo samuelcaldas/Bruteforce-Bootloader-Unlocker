@@ -65,16 +65,19 @@ function test_authorization_guard {
 }
 
 function test_cursor_advancement {
+  source "${LIB_DIR}/constants.sh"
+  source "${LIB_DIR}/pattern_engine.sh"
   source "${LIB_DIR}/unlock_runner.sh"
-
+  CONFIG_PATTERNS='first:9{2}:1;second:A:1'
+  CONFIG_ACTIVE_CHARSET=$CHARSET_DIGITS CONFIG_STRATEGY=smart
   STATE_GLOBAL_CURSOR=10
-  CURRENT_PATTERN_INDEX=1
-  STATE_PATTERN_OFFSETS="5,10,15"
-
+  engine_compile
+  engine_seek 10
+  E_SLOT=1 E_QUOTA=1 CURRENT_PATTERN_INDEX=1
   advance_runtime_cursor
-
-  assert_eq 11 "${STATE_GLOBAL_CURSOR}" "Global cursor incremented"
-  assert_eq "5,11,15" "${STATE_PATTERN_OFFSETS}" "Pattern index 1 incremented"
+  engine_serialize
+  assert_eq 11 "$STATE_GLOBAL_CURSOR" 'Global cursor incremented'
+  assert_eq '10,11' "$STATE_PATTERN_OFFSETS" 'Selected position vector advanced'
 }
 
 function test_fetch_next_candidate {

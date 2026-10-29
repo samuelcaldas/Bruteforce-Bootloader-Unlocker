@@ -33,6 +33,5 @@ readonly CHARSET_MIXED_ALPHANUMERIC="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq
 readonly CHARSET_HEX_UPPER="0123456789ABCDEF"
 readonly CHARSET_HEX_LOWER="0123456789abcdef"
 
-# Built-in Pattern DSL Profiles
-# Format: name:mask:weight:description
-readonly BUILTIN_PATTERN_PROFILES="motorola-portal-20:X{20}:10:Motorola official portal 20-character key;motorola-last-digit:A{19}9:6:Motorola-like key ending with numeric digit;motorola-pos5-digit:A{4}9A{15}:5:Motorola-like key with digit at position 5;hex-16:H{16}:3:16-character hexadecimal unlock token;hex-32:H{32}:2:32-character hexadecimal unlock token;numeric-8:9{8}:2:8-digit numeric unlock PIN;numeric-6:9{6}:1:6-digit numeric unlock PIN"
+# Experimental hypotheses only; never selected from device brand automatically.
+readonly BUILTIN_PATTERN_PROFILES="motorola-20:X{20}:1:Experimental Motorola historical alphabet;sony-xperia-16:H{16}:1:Experimental Xperia format;huawei-honor-legacy-16:9{16}:1:Experimental historical Huawei Honor format"

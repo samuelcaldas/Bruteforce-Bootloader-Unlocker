@@ -14,31 +14,26 @@ function repeat_character {
   printf "%s" "${output}"
 }
 
+# Expansion is bounded before allocation or arithmetic on user input.
 function expand_pattern_mask {
-  local pattern=$1 output="" i=0 char count j num_str
-
-  while (( i < ${#pattern} )); do
-    char="${pattern:i:1}"
-    count=1
-
-    if [[ "${pattern:i+1:1}" == "{" ]]; then
-      j=$(( i + 2 ))
-      num_str=""
-      while (( j < ${#pattern} )) && [[ "${pattern:j:1}" != "}" ]]; do
-        num_str="${num_str}${pattern:j:1}"
-        j=$(( j + 1 ))
+  local mask=$1 i=0 char count digits j output=""
+  [[ -n $mask && $mask != *$'\n'* && $mask != *$'\r'* ]] || return 1
+  while (( i < ${#mask} )); do
+    char=${mask:i:1}; count=1
+    [[ $char != '{' && $char != '}' ]] || return 1
+    if [[ ${mask:i+1:1} == '{' ]]; then
+      j=$((i+2)); digits=''
+      while (( j < ${#mask} )) && [[ ${mask:j:1} != '}' ]]; do
+        digits+=${mask:j:1}; j=$((j+1))
       done
-      if [[ "${pattern:j:1}" == "}" && "${num_str}" =~ ^[0-9]+$ && "${num_str}" -gt 0 ]]; then
-        count="${num_str}"
-        i="${j}"
-      fi
+      [[ ${mask:j:1} == '}' && $digits =~ ^[1-9][0-9]{0,3}$ ]] || return 1
+      count=$digits; i=$j
     fi
-
-    output="${output}$(repeat_character "${char}" "${count}")"
-    i=$(( i + 1 ))
+    (( ${#output} + count <= 4096 )) || return 1
+    for ((j=0; j<count; j++)); do output+=$char; done
+    i=$((i+1))
   done
-
-  printf "%s" "${output}"
+  printf '%s' "$output"
 }
 
 function get_charset_for_symbol {
@@ -57,38 +52,12 @@ function get_charset_for_symbol {
 }
 
 function validate_pattern_mask {
-  local mask=$1 i=0 char j num_str
-  [[ -z "${mask}" ]] && return 1
-
-  while (( i < ${#mask} )); do
-    char="${mask:i:1}"
-    if [[ "${char}" == "{" ]]; then
-      return 1
-    fi
-    if [[ "${mask:i+1:1}" == "{" ]]; then
-      j=$(( i + 2 ))
-      num_str=""
-      while (( j < ${#mask} )) && [[ "${mask:j:1}" != "}" ]]; do
-        num_str="${num_str}${mask:j:1}"
-        j=$(( j + 1 ))
-      done
-      if (( j >= ${#mask} )) || [[ "${mask:j:1}" != "}" ]]; then
-        return 1
-      fi
-      if [[ ! "${num_str}" =~ ^[0-9]+$ || "${num_str}" -le 0 ]]; then
-        return 1
-      fi
-      i="${j}"
-    fi
-    i=$(( i + 1 ))
-  done
-
-  return 0
+  expand_pattern_mask "$1" >/dev/null
 }
 
 function calculate_pattern_space {
   local mask=$1 active_charset=$2 expanded i symbol cs base total=1
-  expanded=$(expand_pattern_mask "${mask}")
+  expanded=$(expand_pattern_mask "${mask}") || return 1
 
   for (( i=0; i<${#expanded}; i++ )); do
     symbol="${expanded:i:1}"
@@ -106,7 +75,8 @@ function calculate_pattern_space {
 
 function generate_code_from_offset {
   local offset=$1 mask=$2 active_charset=$3 expanded result="" i symbol cs base idx ch
-  expanded=$(expand_pattern_mask "${mask}")
+  engine_uint "$offset" || return 1
+  expanded=$(expand_pattern_mask "${mask}") || return 1
 
   for (( i=${#expanded}-1; i>=0; i-- )); do
     symbol="${expanded:i:1}"
@@ -122,12 +92,13 @@ function generate_code_from_offset {
     result="${ch}${result}"
   done
 
+  (( offset == 0 )) || return 1
   printf "%s" "${result}"
 }
 
 function generate_random_pattern_code {
   local mask=$1 active_charset=$2 expanded result="" i symbol cs base idx ch
-  expanded=$(expand_pattern_mask "${mask}")
+  expanded=$(expand_pattern_mask "${mask}") || return 1
 
   for (( i=0; i<${#expanded}; i++ )); do
     symbol="${expanded:i:1}"
@@ -136,7 +107,8 @@ function generate_random_pattern_code {
     if (( base <= 1 )); then
       ch="${cs}"
     else
-      idx=$(( RANDOM % base ))
+      engine_random_below "$base"
+      idx=$E_RANDOM
       ch="${cs:idx:1}"
     fi
     result="${result}${ch}"
@@ -183,6 +155,9 @@ function select_random_pattern_index {
   local raw_patterns=$1 total slot
   total=$(calculate_pattern_weight_total "${raw_patterns}")
   [[ "${total}" -le 0 ]] && { printf 0; return 0; }
-  slot=$(( RANDOM % total ))
+  engine_random_below "$total"
+  slot=$E_RANDOM
   select_pattern_index_by_slot "${slot}" "${raw_patterns}"
 }
+
+source "${BASH_SOURCE[0]%/*}/candidate_engine.sh"

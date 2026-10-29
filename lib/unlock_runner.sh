@@ -7,14 +7,13 @@
 readonly UNLOCK_RUNNER_INCLUDED=1
 
 function format_percentage_string {
-  local current=$1 total=$2 whole frac
+  local current=$1 total=$2
   if [[ "${total}" == "huge" || ! "${total}" =~ ^[0-9]+$ || "${total}" -le 0 ]]; then
     printf "n/a"
     return 0
   fi
-  whole=$(( current * 100 / total ))
-  frac=$(( (current * 100 % total) * 1000 / total ))
-  printf "%d.%03d" "${whole}" "${frac}"
+  # UI only: floating arithmetic avoids signed integer multiplication overflow.
+  awk -v c="$current" -v t="$total" 'BEGIN { printf "%.3f", int(c/t*100000)/1000 }'
 }
 
 function format_time_estimate {
@@ -80,14 +79,12 @@ function display_runtime_summary {
   fi
 
   printf "  Code Charset:     %s\n" "${CONFIG_CODE_TYPE}"
-  if [[ -n "${CONFIG_PATTERNS}" ]]; then
-    printf "  Pattern Schedule: weighted priority DSL\n"
-    IFS=';' read -ra entries <<< "${CONFIG_PATTERNS}"
-    for entry in "${entries[@]}"; do
-      IFS=':' read -r name mask weight desc <<< "${entry}"
-      printf "    - %-20s mask=%-12s weight=%-3s space=%s\n" "${name}" "${mask}" "${weight}" "$(calculate_pattern_space "${mask}" "${CONFIG_ACTIVE_CHARSET}")"
-    done
-  fi
+  printf '  Weights:          scheduling preferences, not success probabilities\n'
+  [[ $CONFIG_STRATEGY != random ]] || ui_warn 'Random samples with replacement and can repeat candidates.'
+  local i
+  for ((i=0; i<E_COUNT; i++)); do
+    printf '    - %-20s mask=%-12s weight=%s effective-space=%s\n' "${E_NAMES[i]}" "${E_MASKS[i]}" "${E_WEIGHTS[i]}" "${E_SPACES[i]}"
+  done
 }
 
 function execute_direct_command_flow {
@@ -109,64 +106,21 @@ function execute_direct_command_flow {
 }
 
 function fetch_next_candidate_code {
-  local selected_idx entry name mask weight desc offset space code
-
-  if [[ -z "${CONFIG_PATTERNS}" ]]; then
-    code=$(generate_code_from_offset "${STATE_GLOBAL_CURSOR}" "X{${CONFIG_CODE_LENGTH}}" "${CONFIG_ACTIVE_CHARSET}")
-    CURRENT_PATTERN_NAME="generic"
-    CURRENT_PATTERN_MASK="X{${CONFIG_CODE_LENGTH}}"
-    CURRENT_PATTERN_SPACE=$(calculate_pattern_space "X{${CONFIG_CODE_LENGTH}}" "${CONFIG_ACTIVE_CHARSET}")
-    CURRENT_PATTERN_OFFSET="${STATE_GLOBAL_CURSOR}"
-    CURRENT_CANDIDATE_CODE=$(apply_known_positional_characters "${code}" "${CONFIG_KNOWN_POSITIONS}")
-    return 0
+  if [[ ${E_READY:-0} != 1 ]]; then
+    engine_compile || return 2
+    engine_seek "${STATE_GLOBAL_CURSOR:-0}" || return 2
   fi
-
-  case "${CONFIG_STRATEGY}" in
-    random) selected_idx=$(select_random_pattern_index "${CONFIG_PATTERNS}") ;;
-    sequential) selected_idx=0 ;;
-    *) selected_idx=$(select_weighted_pattern_index "${STATE_GLOBAL_CURSOR}" "${CONFIG_PATTERNS}") ;;
-  esac
-
-  IFS=';' read -ra entries <<< "${CONFIG_PATTERNS}"
-  entry="${entries[$selected_idx]}"
-  IFS=':' read -r name mask weight desc <<< "${entry}"
-
-  IFS=',' read -ra offsets_arr <<< "${STATE_PATTERN_OFFSETS}"
-  offset="${offsets_arr[$selected_idx]:-0}"
-  space=$(calculate_pattern_space "${mask}" "${CONFIG_ACTIVE_CHARSET}")
-
-  if [[ "${CONFIG_STRATEGY}" == "random" ]]; then
-    code=$(generate_random_pattern_code "${mask}" "${CONFIG_ACTIVE_CHARSET}")
-  else
-    if [[ "${space}" != "huge" && "${space}" -gt 0 && "${offset}" -ge "${space}" ]]; then
-      offset=0
-      offsets_arr[$selected_idx]=0
-    fi
-    code=$(generate_code_from_offset "${offset}" "${mask}" "${CONFIG_ACTIVE_CHARSET}")
+  if (( STATE_GLOBAL_CURSOR >= MAX_INTEGER_VALUE )); then
+    engine_error 'Attempt counter reached the signed integer limit; state preserved'
+    return 2
   fi
-
-  CURRENT_PATTERN_INDEX="${selected_idx}"
-  CURRENT_PATTERN_NAME="${name}"
-  CURRENT_PATTERN_MASK="${mask}"
-  CURRENT_PATTERN_SPACE="${space}"
-  CURRENT_PATTERN_OFFSET="${offset}"
-
-  CURRENT_CANDIDATE_CODE=$(apply_known_positional_characters "${code}" "${CONFIG_KNOWN_POSITIONS}")
+  engine_next
 }
 
 function advance_runtime_cursor {
-  STATE_GLOBAL_CURSOR=$(( STATE_GLOBAL_CURSOR + 1 ))
-  [[ -z "${CURRENT_PATTERN_INDEX:-}" ]] && return 0
-
-  IFS=',' read -ra offsets_arr <<< "${STATE_PATTERN_OFFSETS}"
-  offsets_arr[$CURRENT_PATTERN_INDEX]=$(( ${offsets_arr[$CURRENT_PATTERN_INDEX]:-0} + 1 ))
-
-  local joined="" i
-  for (( i=0; i<${#offsets_arr[@]}; i++ )); do
-    [[ $i -gt 0 ]] && joined="${joined},"
-    joined="${joined}${offsets_arr[$i]:-0}"
-  done
-  STATE_PATTERN_OFFSETS="${joined}"
+  (( STATE_GLOBAL_CURSOR < MAX_INTEGER_VALUE )) || { engine_error 'Attempt counter overflow'; return 1; }
+  engine_advance
+  STATE_GLOBAL_CURSOR=$((STATE_GLOBAL_CURSOR+1))
 }
 
 function execute_candidate_search_loop {
@@ -176,7 +130,12 @@ function execute_candidate_search_loop {
   start_time=$(date +%s)
 
   while true; do
-    fetch_next_candidate_code
+    if fetch_next_candidate_code; then :; else
+      status=$?
+      save_device_state "${TARGET_STATE_FILE}"
+      if (( status == 1 )); then ui_warn 'Candidate space exhausted.'; return 0; fi
+      return "$status"
+    fi
     candidate_code="${CURRENT_CANDIDATE_CODE}"
     set +e
     output=$(dispatch_unlock_payload "${candidate_code}")

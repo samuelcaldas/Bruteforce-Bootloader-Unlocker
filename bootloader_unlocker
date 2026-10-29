@@ -14,9 +14,17 @@ source "${SCRIPT_DIR}/lib/pattern_engine.sh"
 source "${SCRIPT_DIR}/lib/fastboot_client.sh"
 source "${SCRIPT_DIR}/lib/argument_parser.sh"
 source "${SCRIPT_DIR}/lib/unlock_runner.sh"
+source "${SCRIPT_DIR}/lib/runtime_config.sh"
 
 function main {
   parse_cli_arguments "$@"
+
+  if [[ -n $CLI_PREVIEW ]]; then
+    resolve_candidate_configuration || return 1
+    initialize_candidate_state || return 1
+    preview_candidates
+    return $?
+  fi
 
   render_banner
   render_section "LINK" "verifying local fastboot and adb tools"
@@ -31,72 +39,16 @@ function main {
   # Load previous state if available
   load_device_state "${TARGET_STATE_FILE}"
 
-  # Merge configuration with priority: CLI flags > stored state > system defaults
-  CONFIG_CODE_TYPE="${CLI_CODE_TYPE:-${STORED_CODE_TYPE:-${DEFAULT_CODE_TYPE}}}"
-  CONFIG_CODE_LENGTH="${CLI_CODE_LENGTH:-${STORED_CODE_LENGTH:-${DEFAULT_CODE_LENGTH}}}"
-  CONFIG_STRATEGY="${CLI_STRATEGY:-${STORED_STRATEGY:-${DEFAULT_STRATEGY}}}"
-  CONFIG_COMMAND_PROFILE="${CLI_COMMAND_PROFILE:-${STORED_COMMAND_PROFILE:-${DEFAULT_COMMAND_PROFILE}}}"
-  CONFIG_KNOWN_POSITIONS="${STORED_KNOWN_POSITIONS:-}"
-  STATE_GLOBAL_CURSOR="${CLI_START_OFFSET:-${STORED_LAST_VALUE:-0}}"
-  STATE_PATTERN_OFFSETS="${STORED_PATTERN_OFFSETS:-}"
-
-  # Resolve Active Charset
-  case "${CONFIG_CODE_TYPE}" in
-    numeric) CONFIG_ACTIVE_CHARSET="${CHARSET_DIGITS}" ;;
-    alpha|moto) CONFIG_ACTIVE_CHARSET="${CHARSET_UPPER_ALPHANUMERIC}" ;;
-    *)
-      ui_fail "Invalid code type '${CONFIG_CODE_TYPE}'. Valid types: numeric, alpha, moto."
-      exit "${EXIT_GENERAL_ERROR}"
-      ;;
-  esac
-
-  # Resolve Patterns
-  if [[ -n "${CLI_PATTERN_SCHEDULE}" ]]; then
-    CONFIG_PATTERNS="${CLI_PATTERN_SCHEDULE}"
-  elif [[ -n "${CLI_SINGLE_PATTERN}" ]]; then
-    CONFIG_PATTERNS="custom:${CLI_SINGLE_PATTERN}:10:User custom mask"
-  elif [[ -n "${STORED_PATTERNS:-}" ]]; then
-    CONFIG_PATTERNS="${STORED_PATTERNS}"
-  elif [[ "${CONFIG_CODE_TYPE}" == "moto" ]]; then
-    CONFIG_PATTERNS="${BUILTIN_PATTERN_PROFILES}"
-  else
-    CONFIG_PATTERNS=""
-  fi
-
-  # Validate pattern masks
-  if [[ -n "${CONFIG_PATTERNS}" ]]; then
-    IFS=';' read -ra entries <<< "${CONFIG_PATTERNS}"
-    for entry in "${entries[@]}"; do
-      IFS=':' read -r name mask weight desc <<< "${entry}"
-      if ! validate_pattern_mask "${mask}"; then
-        ui_fail "Invalid pattern syntax in mask '${mask}' (entry: '${entry}')"
-        exit "${EXIT_GENERAL_ERROR}"
-      fi
-    done
-  fi
-
-  # Validate strategy
-  case "${CONFIG_STRATEGY}" in
-    smart|sequential|random) ;;
-    *)
-      ui_fail "Invalid search strategy '${CONFIG_STRATEGY}'. Valid: smart, sequential, random."
-      exit "${EXIT_GENERAL_ERROR}"
-      ;;
-  esac
-
-  # Detect and resolve command profile
+  resolve_candidate_configuration || return 1
+  initialize_candidate_state || return 1
   autodetect_unlock_command_profile "${CONFIG_COMMAND_PROFILE}"
 
-  # Ensure pattern offsets initialization
-  if [[ -n "${CONFIG_PATTERNS}" ]]; then
-    IFS=';' read -ra p_entries <<< "${CONFIG_PATTERNS}"
-    IFS=',' read -ra o_entries <<< "${STATE_PATTERN_OFFSETS}"
-    local default_offsets="" i
-    for (( i=0; i<${#p_entries[@]}; i++ )); do
-      [[ $i -gt 0 ]] && default_offsets="${default_offsets},"
-      default_offsets="${default_offsets}${o_entries[$i]:-0}"
-    done
-    STATE_PATTERN_OFFSETS="${default_offsets}"
+  # Explicit restart preserves the previous state for inspection/recovery.
+  if [[ -n $CLI_START_OFFSET && -f $TARGET_STATE_FILE ]]; then
+    local backup
+    backup=$(mktemp "${TARGET_STATE_FILE}.before-restart.XXXXXX")
+    cp -- "$TARGET_STATE_FILE" "$backup"
+    ui_warn "Previous state preserved at $backup"
   fi
 
   # Persist resolved configuration

@@ -17,7 +17,7 @@ function test_cli_help_and_list {
   # List patterns option
   run_capture "${CLI_BIN}" --list-patterns
   assert_eq 0 "${CAPTURE_STATUS}" "--list-patterns exits 0"
-  assert_contains "${CAPTURE_OUTPUT}" "motorola-portal-20" "Output lists builtin profile"
+  assert_contains "${CAPTURE_OUTPUT}" "motorola-20" "Output lists builtin profile"
 
   # Verify no state files created
   local dat_count

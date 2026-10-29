@@ -73,3 +73,26 @@ All test cases utilize the built-in assertion engine from `tests/test_helper.sh`
 - `assert_not_contains <haystack> <needle> [msg]`: Inverted substring check.
 - `assert_no_ansi <string> [msg]`: Asserts absence of ANSI escape sequences.
 - `assert_empty <string> [msg]`: Asserts variable is empty string.
+
+## Compiled candidate engine regressions
+
+`unit/test_candidate_engine.sh` verifies complete mixed-base spaces, carry,
+fixed-position pruning, compiled deduplication, partial overlap ownership,
+weighted scheduling, exhaustion, integer bounds, random replacement, positional
+state round trips and malformed state rejection.
+
+`integration/test_candidate_cli.sh` verifies preview with a fastboot tripwire,
+experimental opt-in, invalid option combinations, finite search termination,
+exhausted state resume, incompatible state preservation, explicit restart backups
+and version 2 resume following a simulated terminal fastboot rejection. The
+original workflow suite retains equivalent legacy-offset migration coverage.
+
+Validation on 2026-10-29: **59 tests passed across 10 suites; 22 Bash syntax
+checks passed**. All device operations used mock fastboot. ShellCheck passed at
+warning severity on changed runtime modules with SC2034 excluded because the
+modules intentionally share global variables. Numeric lexical comparisons have
+local SC2071 annotations explaining why arithmetic comparison is unsafe before
+range validation. `git diff --check` passed.
+
+The independent benchmark uses Python 3 as a development timing harness;
+application generation remains Bash. See [benchmark results](BENCHMARK.md).

@@ -89,9 +89,9 @@ function test_help_and_list_patterns_output {
   # List patterns output
   run_capture parse_cli_arguments --list-patterns
   assert_eq 0 "${CAPTURE_STATUS}" "--list-patterns returns exit code 0"
-  assert_contains "${CAPTURE_OUTPUT}" "motorola-portal-20" "Lists motorola-portal-20"
-  assert_contains "${CAPTURE_OUTPUT}" "hex-16" "Lists hex-16"
-  assert_contains "${CAPTURE_OUTPUT}" "numeric-8" "Lists numeric-8"
+  assert_contains "${CAPTURE_OUTPUT}" "motorola-20" "Lists motorola-20"
+  assert_contains "${CAPTURE_OUTPUT}" "sony-xperia-16" "Lists sony-xperia-16"
+  assert_contains "${CAPTURE_OUTPUT}" "huawei-honor-legacy-16" "Lists huawei-honor-legacy-16"
 }
 
 run_test "Argument parser valid flag parsing" test_valid_flag_parsing
